@@ -280,26 +280,6 @@
         return textoCompleto;
     }
 
-    async function obtenerModeloDisponible(apiKey) {
-        // Consulta directamente a la API qué modelos soporta tu cuenta
-        try {
-            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-            const data = await res.json();
-            if (data.models) {
-                const candidatos = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'];
-                for (const c of candidatos) {
-                    const match = data.models.find(m => m.name.includes(c) && m.supportedGenerationMethods?.includes('generateContent'));
-                    if (match) return match.name;
-                }
-                const fallback = data.models.find(m => m.supportedGenerationMethods?.includes('generateContent'));
-                if (fallback) return fallback.name;
-            }
-        } catch (e) {
-            // Si falla listModels, usar el estándar directo
-        }
-        return 'models/gemini-2.0-flash';
-    }
-
     async function procesarDocumento() {
         const apiKey = document.getElementById('apiKey').value.trim();
         const fileInput = document.getElementById('pdfFile');
@@ -326,10 +306,7 @@
                 throw new Error('No se pudo extraer texto legible del PDF. Verifica que contenga texto seleccionable.');
             }
 
-            setStatus('Detectando modelo disponible en tu cuenta...', 'loading');
-            const modelName = await obtenerModeloDisponible(apiKey);
-
-            setStatus(`Generando tarjetas con ${modelName.replace('models/', '')}...`, 'loading');
+            setStatus('Generando flashcards con el modelo gratuito...', 'loading');
 
             const prompt = `Eres un creador profesional de tarjetas Anki. A partir del siguiente texto, genera entre 8 y 20 tarjetas de estudio sobre los conceptos, definiciones, fórmulas o ideas más relevantes.
 
@@ -344,7 +321,8 @@ Ejemplo:
 TEXTO:
 ${textoExtraido.slice(0, 10000)}`;
 
-            const url = `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${apiKey}`;
+            // Modelo Flash con cuota gratuita habilitada por defecto
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
             const response = await fetch(url, {
                 method: 'POST',
