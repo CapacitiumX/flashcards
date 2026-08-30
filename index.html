@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CapacitiumX - Generador de Flashcards para Anki</title>
+    <!-- PDF.js para leer PDFs directamente en el navegador sin backend -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        :root {
+            --bg-dark: #121218;
+            --card-bg: #1c1c27;
+            --card-border: #2e2e42;
+            --text-main: #f1f1f5;
+            --text-sub: #8a8a9e;
+            --accent-blue: #00d2ff;
+            --accent-green: #00ff88;
+            --accent-yellow: #ffcc00;
+            --accent-red: #ff0055;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            padding: 30px 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 850px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        header h1 {
+            font-size: 24px;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        header p {
+            color: var(--text-sub);
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-sub);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        input[type="text"], input[type="file"] {
+            width: 100%;
+            padding: 12px 15px;
+            background-color: #0f0f15;
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            color: var(--text-main);
+            font-size: 14px;
+            outline: none;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--accent-blue);
+        }
+
+        input[type="file"] {
+            cursor: pointer;
+        }
+
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-yellow {
+            background-color: var(--accent-yellow);
+            color: #000;
+            white-space: nowrap;
+        }
+
+        .btn-green {
+            background-color: var(--accent-green);
+            color: #000;
+            width: 100%;
+            font-size: 16px;
+            padding: 14px;
+        }
+
+        .btn-green:disabled {
+            background-color: #444;
+            color: #888;
+            cursor: not-allowed;
+        }
+
+        .btn-red {
+            background-color: var(--accent-red);
+            color: #fff;
+        }
+
+        .status-box {
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            text-align: center;
+            display: none;
+        }
+
+        .status-loading {
+            display: block;
+            background-color: rgba(0, 210, 255, 0.1);
+            color: var(--accent-blue);
+            border: 1px solid var(--accent-blue);
+        }
+
+        .status-error {
+            display: block;
+            background-color: rgba(255, 0, 85, 0.1);
+            color: var(--accent-red);
+            border: 1px solid var(--accent-red);
+        }
+
+        .status-success {
+            display: block;
+            background-color: rgba(0, 255, 136, 0.1);
+            color: var(--accent-green);
+            border: 1px solid var(--accent-green);
+        }
+
+        /* Lista de Tarjetas */
+        .cards-container {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-height: 450px;
+            overflow-y: auto;
+            margin-top: 15px;
+            padding-right: 5px;
+        }
+
+        .flashcard-item {
+            background-color: #12121a;
+            border-left: 4px solid var(--accent-blue);
+            border-radius: 6px;
+            padding: 12px 16px;
+        }
+
+        .flashcard-front {
+            font-weight: 700;
+            color: var(--accent-yellow);
+            margin-bottom: 4px;
+            font-size: 15px;
+        }
+
+        .flashcard-back {
+            color: var(--text-main);
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .actions-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>📇 Generador de Flashcards para Anki</h1>
+        <p>Procesa apuntes en PDF usando IA y expórtalos en segundos</p>
+    </header>
+
+    <div class="card">
+        <!-- Paso 1: API Key -->
+        <div class="form-group">
+            <label>1. API Key de Google Gemini</label>
+            <div class="input-row">
+                <input type="text" id="apiKey" placeholder="Pega aquí tu API Key (AIzaSy...)">
+                <a href="https://aistudio.google.com/app/apikey" target="_blank" style="text-decoration: none;">
+                    <button class="btn btn-yellow" type="button">Obtener Clave</button>
+                </a>
+            </div>
+        </div>
+
+        <!-- Paso 2: Archivo PDF -->
+        <div class="form-group">
+            <label>2. Archivo PDF de Estudio</label>
+            <input type="file" id="pdfFile" accept="application/pdf">
+        </div>
+
+        <!-- Botón de Generación -->
+        <button class="btn btn-green" id="btnGenerar" onclick="procesarDocumento()">⚡ Generar Flashcards con IA</button>
+    </div>
+
+    <!-- Mensajes de Estado -->
+    <div id="statusBox" class="status-box"></div>
+
+    <!-- Sección de Resultados -->
+    <div class="card" id="resultadosCard" style="display: none;">
+        <div class="actions-row">
+            <h3>Tarjetas Generadas (<span id="totalCards">0</span>)</h3>
+            <button class="btn btn-red" onclick="descargarAnkiTxt()">💾 Descargar Archivo para Anki (.txt)</button>
+        </div>
+        <div class="cards-container" id="cardsList"></div>
+    </div>
+</div>
+
+<script>
+    // Configurar worker de PDF.js
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    let flashcardsData = [];
+
+    function setStatus(mensaje, tipo) {
+        const box = document.getElementById('statusBox');
+        box.className = 'status-box status-' + tipo;
+        box.innerText = mensaje;
+    }
+
+    async function extraerTextoPDF(file) {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        let textoCompleto = '';
+
+        // Extraer texto de hasta las primeras 15 páginas para no saturar el prompt
+        const maxPaginas = Math.min(pdf.numPages, 15);
+        for (let i = 1; i <= maxPaginas; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            const strings = content.items.map(item => item.str);
+            textoCompleto += strings.join(' ') + '\n';
+        }
+        return textoCompleto;
+    }
+
+    async function procesarDocumento() {
+        const apiKey = document.getElementById('apiKey').value.trim();
+        const fileInput = document.getElementById('pdfFile');
+        const btnGenerar = document.getElementById('btnGenerar');
+
+        if (!apiKey) {
+            alert('Por favor, ingresa tu API Key de Google.');
+            return;
+        }
+
+        if (fileInput.files.length === 0) {
+            alert('Por favor, selecciona un archivo PDF primero.');
+            return;
+        }
+
+        btnGenerar.disabled = true;
+        setStatus('Extrayendo texto del PDF directamente en tu navegador...', 'loading');
+
+        try {
+            const file = fileInput.files[0];
+            const textoExtraido = await extraerTextoPDF(file);
+
+            if (!textoExtraido || textoExtraido.trim().length < 40) {
+                throw new Error('No se pudo extraer texto legible del PDF. Verifica que contenga texto seleccionable y no solo imágenes escaneadas.');
+            }
+
+            setStatus('Analizando conceptos clave con Google Gemini...', 'loading');
+
+            const prompt = `Eres un creador profesional de tarjetas Anki. Analiza el siguiente texto y genera entre 8 y 20 tarjetas de estudio sobre los conceptos, definiciones, fórmulas o ideas más relevantes.
+
+REGLA ESTRICTA DE FORMATO:
+- Cada tarjeta debe ocupar EXACTAMENTE una sola línea.
+- Separa la pregunta/término de la respuesta/explicación usando el carácter barra vertical: |
+- No agregues números, asteriscos de formato (*), ni encabezados.
+
+Ejemplo:
+¿Qué es la Planeación Estratégica? | Es el proceso sistemático de desarrollo e implementación de planes para alcanzar propósitos u objetivos.
+
+TEXTO:
+${textoExtraido.slice(0, 12000)}`;
+
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+            
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }]
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                const errorMsg = data.error ? data.error.message : 'Error al comunicarse con la API de Google.';
+                throw new Error(errorMsg);
+            }
+
+            const rawText = data.candidates[0].content.parts[0].text;
+            const lineas = rawText.split('\n');
+            flashcardsData = [];
+
+            const cardsList = document.getElementById('cardsList');
+            cardsList.innerHTML = '';
+
+            lineas.forEach(linea => {
+                if (linea.includes('|')) {
+                    const [frente, reverso] = linea.split('|').map(s => s.trim().replace(/\*/g, ''));
+                    if (frente && reverso) {
+                        flashcardsData.push({ frente, reverso });
+
+                        const cardDiv = document.createElement('div');
+                        cardDiv.className = 'flashcard-item';
+                        cardDiv.innerHTML = `
+                            <div class="flashcard-front">${frente}</div>
+                            <div class="flashcard-back">${reverso}</div>
+                        `;
+                        cardsList.appendChild(cardDiv);
+                    }
+                }
+            });
+
+            if (flashcardsData.length > 0) {
+                document.getElementById('totalCards').innerText = flashcardsData.length;
+                document.getElementById('resultadosCard').style.display = 'block';
+                setStatus(`¡Éxito! Se generaron ${flashcardsData.length} flashcards listas para estudiar o exportar.`, 'success');
+            } else {
+                throw new Error('La IA no pudo estructurar tarjetas con el formato solicitado. Intenta de nuevo.');
+            }
+
+        } catch (error) {
+            setStatus('Error: ' + error.message, 'error');
+        } finally {
+            btnGenerar.disabled = false;
+        }
+    }
+
+    function descargarAnkiTxt() {
+        if (flashcardsData.length === 0) return;
+
+        // Formato estándar Anki: Campo1[TAB]Campo2
+        let contenidoTxt = '';
+        flashcardsData.forEach(card => {
+            contenidoTxt += `${card.frente}\t${card.reverso}\n`;
+        });
+
+        const blob = new Blob([contenidoTxt], { type: 'text/plain;charset=utf-8' });
+        const enlace = document.createElement('a');
+        enlace.href = URL.createObjectURL(blob);
+        enlace.download = 'flashcards_anki.txt';
+        document.body.appendChild(enlace);
+        enlace.click();
+        document.body.removeChild(enlace);
+    }
+</script>
+
+</body>
+</html>
