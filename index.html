@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CapacitiumX - Generador de Flashcards para Anki</title>
+    <!-- PDF.js para procesar PDFs en el navegador sin backend -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <style>
         :root {
@@ -279,6 +280,26 @@
         return textoCompleto;
     }
 
+    async function obtenerModeloDisponible(apiKey) {
+        // Consulta directamente a la API qué modelos soporta tu cuenta
+        try {
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+            const data = await res.json();
+            if (data.models) {
+                const candidatos = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'];
+                for (const c of candidatos) {
+                    const match = data.models.find(m => m.name.includes(c) && m.supportedGenerationMethods?.includes('generateContent'));
+                    if (match) return match.name;
+                }
+                const fallback = data.models.find(m => m.supportedGenerationMethods?.includes('generateContent'));
+                if (fallback) return fallback.name;
+            }
+        } catch (e) {
+            // Si falla listModels, usar el estándar directo
+        }
+        return 'models/gemini-2.0-flash';
+    }
+
     async function procesarDocumento() {
         const apiKey = document.getElementById('apiKey').value.trim();
         const fileInput = document.getElementById('pdfFile');
@@ -305,7 +326,10 @@
                 throw new Error('No se pudo extraer texto legible del PDF. Verifica que contenga texto seleccionable.');
             }
 
-            setStatus('Analizando conceptos con Gemini (v1 estable)...', 'loading');
+            setStatus('Detectando modelo disponible en tu cuenta...', 'loading');
+            const modelName = await obtenerModeloDisponible(apiKey);
+
+            setStatus(`Generando tarjetas con ${modelName.replace('models/', '')}...`, 'loading');
 
             const prompt = `Eres un creador profesional de tarjetas Anki. A partir del siguiente texto, genera entre 8 y 20 tarjetas de estudio sobre los conceptos, definiciones, fórmulas o ideas más relevantes.
 
@@ -320,8 +344,7 @@ Ejemplo:
 TEXTO:
 ${textoExtraido.slice(0, 10000)}`;
 
-            // Endpoint v1 oficial y estándar
-            const url = `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${apiKey}`;
+            const url = `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${apiKey}`;
 
             const response = await fetch(url, {
                 method: 'POST',
