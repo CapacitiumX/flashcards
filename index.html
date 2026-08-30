@@ -230,7 +230,7 @@
         <div class="form-group">
             <label>1. API Key de Google Gemini</label>
             <div class="input-row">
-                <input type="text" id="apiKey" placeholder="Pega aquí tu API Key (AIzaSy...)">
+                <input type="text" id="apiKey" placeholder="Pega aquí tu API Key válida (debe empezar con AIzaSy...)">
                 <a href="https://aistudio.google.com/app/apikey" target="_blank" style="text-decoration: none;">
                     <button class="btn btn-yellow" type="button">Obtener Clave</button>
                 </a>
@@ -261,7 +261,6 @@
 </div>
 
 <script>
-    // Configurar worker de PDF.js
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     let flashcardsData = [];
@@ -277,7 +276,6 @@
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         let textoCompleto = '';
 
-        // Extraer texto de hasta las primeras 15 páginas para no saturar el prompt
         const maxPaginas = Math.min(pdf.numPages, 15);
         for (let i = 1; i <= maxPaginas; i++) {
             const page = await pdf.getPage(i);
@@ -311,7 +309,7 @@
             const textoExtraido = await extraerTextoPDF(file);
 
             if (!textoExtraido || textoExtraido.trim().length < 40) {
-                throw new Error('No se pudo extraer texto legible del PDF. Verifica que contenga texto seleccionable y no solo imágenes escaneadas.');
+                throw new Error('No se pudo extraer texto legible del PDF. Verifica que no sea un documento escaneado como imagen.');
             }
 
             setStatus('Analizando conceptos clave con Google Gemini...', 'loading');
@@ -329,7 +327,8 @@ Ejemplo:
 TEXTO:
 ${textoExtraido.slice(0, 12000)}`;
 
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+            // Conexión corregida al endpoint de gemini-pro
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
             
             const response = await fetch(url, {
                 method: 'POST',
@@ -388,7 +387,6 @@ ${textoExtraido.slice(0, 12000)}`;
     function descargarAnkiTxt() {
         if (flashcardsData.length === 0) return;
 
-        // Formato estándar Anki: Campo1[TAB]Campo2
         let contenidoTxt = '';
         flashcardsData.forEach(card => {
             contenidoTxt += `${card.frente}\t${card.reverso}\n`;
