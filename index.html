@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CapacitiumX - Generador de Flashcards para Anki</title>
-    <!-- PDF.js para leer PDFs directamente en el navegador sin backend -->
+    <!-- PDF.js para procesar PDFs en el navegador sin backend -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <style>
         :root {
@@ -178,7 +178,6 @@
             border: 1px solid var(--accent-green);
         }
 
-        /* Lista de Tarjetas */
         .cards-container {
             display: flex;
             flex-direction: column;
@@ -226,31 +225,26 @@
     </header>
 
     <div class="card">
-        <!-- Paso 1: API Key -->
         <div class="form-group">
             <label>1. API Key de Google Gemini</label>
             <div class="input-row">
-                <input type="text" id="apiKey" placeholder="Pega aquí tu API Key válida (debe empezar con AIzaSy...)">
+                <input type="text" id="apiKey" placeholder="Pega aquí tu API Key válida (AIzaSy...)">
                 <a href="https://aistudio.google.com/app/apikey" target="_blank" style="text-decoration: none;">
                     <button class="btn btn-yellow" type="button">Obtener Clave</button>
                 </a>
             </div>
         </div>
 
-        <!-- Paso 2: Archivo PDF -->
         <div class="form-group">
             <label>2. Archivo PDF de Estudio</label>
             <input type="file" id="pdfFile" accept="application/pdf">
         </div>
 
-        <!-- Botón de Generación -->
         <button class="btn btn-green" id="btnGenerar" onclick="procesarDocumento()">⚡ Generar Flashcards con IA</button>
     </div>
 
-    <!-- Mensajes de Estado -->
     <div id="statusBox" class="status-box"></div>
 
-    <!-- Sección de Resultados -->
     <div class="card" id="resultadosCard" style="display: none;">
         <div class="actions-row">
             <h3>Tarjetas Generadas (<span id="totalCards">0</span>)</h3>
@@ -286,6 +280,36 @@
         return textoCompleto;
     }
 
+    async function llamarGeminiConFallback(apiKey, prompt) {
+        // Lista de modelos ordenados para intentar en secuencia automática
+        const modelos = ['gemini-pro', 'gemini-1.5-pro', 'gemini-1.5-flash'];
+        let ultimoError = '';
+
+        for (const modelo of modelos) {
+            try {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: prompt }] }]
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.candidates && data.candidates[0].content) {
+                    return data.candidates[0].content.parts[0].text;
+                } else if (data.error) {
+                    ultimoError = data.error.message;
+                }
+            } catch (err) {
+                ultimoError = err.message;
+            }
+        }
+        throw new Error(ultimoError || 'No se pudo conectar con los modelos disponibles de Gemini.');
+    }
+
     async function procesarDocumento() {
         const apiKey = document.getElementById('apiKey').value.trim();
         const fileInput = document.getElementById('pdfFile');
@@ -302,24 +326,24 @@
         }
 
         btnGenerar.disabled = true;
-        setStatus('Extrayendo texto del PDF directamente en tu navegador...', 'loading');
+        setStatus('Extrayendo texto del documento PDF...', 'loading');
 
         try {
             const file = fileInput.files[0];
             const textoExtraido = await extraerTextoPDF(file);
 
             if (!textoExtraido || textoExtraido.trim().length < 40) {
-                throw new Error('No se pudo extraer texto legible del PDF. Verifica que no sea un documento escaneado como imagen.');
+                throw new Error('No se pudo extraer texto legible del PDF. Verifica que contenga texto seleccionable.');
             }
 
-            setStatus('Analizando conceptos clave con Google Gemini...', 'loading');
+            setStatus('Conectando con Google Gemini y generando flashcards...', 'loading');
 
-            const prompt = `Eres un creador profesional de tarjetas Anki. Analiza el siguiente texto y genera entre 8 y 20 tarjetas de estudio sobre los conceptos, definiciones, fórmulas o ideas más relevantes.
+            const prompt = `Eres un creador profesional de tarjetas Anki. Analiza el siguiente texto y genera entre 8 y 20 tarjetas de estudio sobre los conceptos, definiciones o ideas más relevantes.
 
 REGLA ESTRICTA DE FORMATO:
 - Cada tarjeta debe ocupar EXACTAMENTE una sola línea.
-- Separa la pregunta/término de la respuesta/explicación usando el carácter barra vertical: |
-- No agregues números, asteriscos de formato (*), ni encabezados.
+- Separa la pregunta/concepto de la respuesta/definición usando el carácter barra vertical: |
+- No agregues números ni asteriscos de formato (*).
 
 Ejemplo:
 ¿Qué es la Planeación Estratégica? | Es el proceso sistemático de desarrollo e implementación de planes para alcanzar propósitos u objetivos.
@@ -327,25 +351,7 @@ Ejemplo:
 TEXTO:
 ${textoExtraido.slice(0, 12000)}`;
 
-            // Conexión corregida al endpoint de gemini-pro
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
-            
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }]
-                })
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                const errorMsg = data.error ? data.error.message : 'Error al comunicarse con la API de Google.';
-                throw new Error(errorMsg);
-            }
-
-            const rawText = data.candidates[0].content.parts[0].text;
+            const rawText = await llamarGeminiConFallback(apiKey, prompt);
             const lineas = rawText.split('\n');
             flashcardsData = [];
 
@@ -374,7 +380,7 @@ ${textoExtraido.slice(0, 12000)}`;
                 document.getElementById('resultadosCard').style.display = 'block';
                 setStatus(`¡Éxito! Se generaron ${flashcardsData.length} flashcards listas para estudiar o exportar.`, 'success');
             } else {
-                throw new Error('La IA no pudo estructurar tarjetas con el formato solicitado. Intenta de nuevo.');
+                throw new Error('La IA no pudo estructurar las tarjetas. Intenta nuevamente.');
             }
 
         } catch (error) {
